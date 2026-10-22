@@ -1,5 +1,6 @@
 import {
   Code2,
+  Database,
   Eye,
   EyeOff,
   Globe,
@@ -21,9 +22,10 @@ import { useDocumentStore } from '../store/documentStore';
 
 interface TopBarProps {
   onOpenExport: () => void;
+  onOpenCms?: () => void;
 }
 
-export function TopBar({ onOpenExport }: TopBarProps) {
+export function TopBar({ onOpenExport, onOpenCms }: TopBarProps) {
   const title = useDocumentStore((s) => s.doc.title);
   const nodeCount = useDocumentStore((s) => Object.keys(s.doc.nodes).length);
   const breakpoint = useDocumentStore((s) => s.breakpoint);
@@ -209,6 +211,19 @@ export function TopBar({ onOpenExport }: TopBarProps) {
           <RotateCcw className="w-3.5 h-3.5" />
           <span className="hidden lg:inline">Reset</span>
         </button>
+
+        {/* CMS Collections Button */}
+        {onOpenCms && (
+          <button
+            type="button"
+            onClick={onOpenCms}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-950/60 hover:bg-indigo-900/70 text-indigo-300 border border-indigo-500/40 transition-colors cursor-pointer"
+            title="Open Visual CMS Collections (Posts, Products & Custom Collections)"
+          >
+            <Database className="w-3.5 h-3.5 text-indigo-400" />
+            <span>CMS</span>
+          </button>
+        )}
 
         {/* Preview Toggle */}
         <button

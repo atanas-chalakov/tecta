@@ -7,6 +7,10 @@ import {
 } from '../cssomEngine';
 import { createPrimitiveNode } from '../../domain/schema';
 import { useDocumentStore } from '../../store/documentStore';
+import {
+  isWebDesignPrompt,
+  runBuiltinDesignAssistant,
+} from '../aiDesignCopilot';
 
 describe('Direct-CSSOM Engine & Compiler', () => {
   it('converts camelCase CSS properties to kebab-case', () => {
@@ -343,4 +347,76 @@ describe('Higher-Level Multi-Website Projects Manager', () => {
     expect(useDocumentStore.getState().projects[id]).toBeUndefined();
   });
 });
+
+describe('AI Design Copilot & Domain Guardrails', () => {
+  it('enforces web design domain guardrails and rejects off-topic prompts', () => {
+    expect(isWebDesignPrompt('Add a 2px emerald border and dark background')).toBe(true);
+    expect(isWebDesignPrompt('Suggest a serif font pairing for headings')).toBe(true);
+    expect(isWebDesignPrompt('What is the capital of France?')).toBe(false);
+
+    const card = createPrimitiveNode('card', null);
+    const offTopic = runBuiltinDesignAssistant(
+      'Solve 2x + 5 = 15',
+      card,
+      'desktop'
+    );
+    expect(offTopic.engineUsed).toBe('Domain Guardrail');
+    expect(offTopic.stylePatch).toBeUndefined();
+  });
+
+  it('synthesizes border, background, glassmorphism, and font pairing CSS patches', () => {
+    const card = createPrimitiveNode('card', null);
+    const borderRes = runBuiltinDesignAssistant(
+      'Add a 2px emerald border with 24px radius and glow',
+      card,
+      'desktop'
+    );
+    expect(borderRes.stylePatch?.borderWidth).toBe('2px');
+    expect(borderRes.stylePatch?.borderRadius).toBe('24px');
+    expect(borderRes.stylePatch?.borderColor).toBe('#059669');
+    expect(borderRes.stylePatch?.boxShadow).toContain('rgba(16, 185, 129');
+
+    const fontRes = runBuiltinDesignAssistant(
+      'Suggest an editorial luxury serif font family',
+      card,
+      'desktop'
+    );
+    expect(fontRes.fontPairing?.heading).toBe('Playfair Display');
+    expect(fontRes.fontPairing?.body).toBe('Plus Jakarta Sans');
+  });
+});
+
+describe('Visual CMS Collections (Posts, Products & Custom)', () => {
+  beforeEach(() => {
+    useDocumentStore.getState().resetToStarter();
+  });
+
+  it('manages CMS items and compiles data-bound Collection Grids onto the page', () => {
+    const store = useDocumentStore.getState();
+    const initialCols = store.cmsCollections;
+    expect(initialCols.some((c) => c.id === 'cms_posts')).toBe(true);
+    expect(initialCols.some((c) => c.id === 'cms_products')).toBe(true);
+
+    const newItemId = store.upsertCmsItem('cms_products', {
+      status: 'published',
+      values: {
+        title: 'Quantum Grid System',
+        slug: 'quantum-grid',
+        price: '$79',
+        category: 'PRO',
+        excerpt: 'Next-gen layout primitives.',
+        ctaLabel: 'Buy Now — $79',
+      },
+    });
+    expect(newItemId).toBeTruthy();
+
+    const sectionId = useDocumentStore
+      .getState()
+      .insertCmsCollectionSection('cms_products', 3);
+    expect(sectionId).toBeTruthy();
+    const insertedSection = useDocumentStore.getState().doc.nodes[sectionId!];
+    expect(insertedSection?.name).toContain('CMS: Products');
+  });
+});
+
 

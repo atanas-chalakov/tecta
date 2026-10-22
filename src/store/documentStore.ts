@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import {
+  buildCmsCollectionSection,
   canAcceptChildren,
+  createDefaultCmsCollections,
   createDefaultDesignTokens,
   createDefaultPresets,
   createNodeId,
@@ -13,6 +15,9 @@ import {
   SECTION_TEMPLATES,
   syncPresetsWithTokens,
   type Breakpoint,
+  type CmsCollection,
+  type CmsField,
+  type CmsItem,
   type CustomUploadedFont,
   type DesignTokens,
   type ElementKind,
@@ -201,6 +206,8 @@ export interface DocumentStoreState {
   selectedPresetKey: PresetKey | null;
   customComponents: SavedComponent[];
   activeComponentId: string | null;
+  cmsCollections: CmsCollection[];
+  activeCmsCollectionId: string;
 
   pages: Record<string, PageDocument>;
   activePageId: string;
@@ -249,10 +256,27 @@ export interface DocumentStoreState {
   deleteCustomComponent: (id: string) => void;
   insertCustomComponent: (id: string) => NodeId | null;
 
-  // Step 3: Pages & Posts Actions
+  // Step 3: Pages & Posts + CMS Collections Actions
   createPage: (title: string) => string;
   switchPage: (pageId: string) => void;
   deletePage: (pageId: string) => void;
+  setActiveCmsCollection: (collectionId: string) => void;
+  createCmsCollection: (
+    name: string,
+    singularName: string,
+    description: string,
+    fields?: CmsField[]
+  ) => string;
+  upsertCmsItem: (
+    collectionId: string,
+    item: { id?: string; status: 'published' | 'draft'; values: Record<string, string> }
+  ) => string;
+  deleteCmsItem: (collectionId: string, itemId: string) => void;
+  insertCmsCollectionSection: (collectionId: string, columns?: 2 | 3) => NodeId | null;
+  insertGeneratedSection: (section: {
+    rootNode: TectaNode;
+    descendants: TectaNode[];
+  }) => NodeId;
 
   // Studio Node & Canvas Actions
   selectNode: (id: NodeId | null) => void;
@@ -288,6 +312,7 @@ export const useDocumentStore = create<DocumentStoreState>()(
     const initialProjects = loadInitialProjects();
     const fallbackDoc = createStarterDocument();
     const fallbackTokens = createDefaultDesignTokens();
+    const fallbackCms = createDefaultCmsCollections();
 
     const commitDoc = (nextDoc: PageDocument, nextSelected?: NodeId | null) => {
       const current = get();
@@ -332,6 +357,8 @@ export const useDocumentStore = create<DocumentStoreState>()(
       selectedPresetKey: 'tokens-colors',
       customComponents: [],
       activeComponentId: null,
+      cmsCollections: fallbackCms,
+      activeCmsCollectionId: fallbackCms[0]?.id ?? 'cms_posts',
 
       pages: { [fallbackDoc.id]: fallbackDoc },
       activePageId: fallbackDoc.id,
@@ -372,6 +399,7 @@ export const useDocumentStore = create<DocumentStoreState>()(
 
         const presets = syncPresetsWithTokens(tokens, createDefaultPresets());
         const initialComponents: SavedComponent[] = [];
+        const initialCms = createDefaultCmsCollections();
 
         if (template === 'saas') {
           const starterDoc = createStarterDocument();
@@ -415,6 +443,7 @@ export const useDocumentStore = create<DocumentStoreState>()(
           tokens,
           presets,
           customComponents: initialComponents,
+          cmsCollections: initialCms,
           pages: initialPages,
           activePageId,
           createdAt: Date.now(),
@@ -437,6 +466,10 @@ export const useDocumentStore = create<DocumentStoreState>()(
 
         const targetStep = step ?? proj.activeStep ?? 1;
         const targetTokens = proj.tokens ?? createDefaultDesignTokens();
+        const targetCms =
+          proj.cmsCollections && proj.cmsCollections.length > 0
+            ? proj.cmsCollections
+            : createDefaultCmsCollections();
 
         // Load configured Google webfonts & custom fonts
         targetTokens.googleFontsLoaded?.forEach((f) => loadGoogleFont(f));
@@ -456,6 +489,8 @@ export const useDocumentStore = create<DocumentStoreState>()(
           tokens: targetTokens,
           presets: proj.presets ?? createDefaultPresets(),
           customComponents: proj.customComponents ?? [],
+          cmsCollections: targetCms,
+          activeCmsCollectionId: targetCms[0]?.id ?? 'cms_posts',
           pages: proj.pages,
           activePageId: activePageDoc.id,
           doc: activePageDoc,
@@ -1063,6 +1098,206 @@ export const useDocumentStore = create<DocumentStoreState>()(
             selectedNodeId: nextDoc.rootIds[0] ?? null,
           });
         }
+      },
+
+      setActiveCmsCollection: (collectionId) =>
+        set({ activeCmsCollectionId: collectionId }),
+
+      createCmsCollection: (name, singularName, description, customFields) => {
+        const current = get();
+        const cleanName = name.trim() || 'Custom Collection';
+        const cleanSingular = singularName.trim() || 'Item';
+        const slug =
+          cleanName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)+/g, '') || 'items';
+
+        const newCol: CmsCollection = {
+          id: `cms_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          name: cleanName,
+          singularName: cleanSingular,
+          slug,
+          icon: 'custom',
+          description: description.trim() || `Dynamic ${cleanName} collection.`,
+          fields:
+            customFields && customFields.length > 0
+              ? customFields
+              : [
+                  { id: 'f_title', key: 'title', label: `${cleanSingular} Title`, type: 'text', required: true },
+                  { id: 'f_slug', key: 'slug', label: 'Slug', type: 'slug', required: true },
+                  { id: 'f_cat', key: 'category', label: 'Tag / Badge', type: 'badge' },
+                  { id: 'f_price', key: 'price', label: 'Price / Meta', type: 'price' },
+                  { id: 'f_excerpt', key: 'excerpt', label: 'Description', type: 'richtext' },
+                  { id: 'f_image', key: 'image', label: 'Image URL', type: 'image' },
+                  { id: 'f_cta', key: 'ctaLabel', label: 'Button Label', type: 'text' },
+                ],
+          items: [
+            {
+              id: `item_${Date.now()}`,
+              status: 'published',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              values: {
+                title: `Sample ${cleanSingular}`,
+                slug: `sample-${slug}-1`,
+                category: 'FEATURED',
+                price: '',
+                excerpt: `First entry in the ${cleanName} CMS collection.`,
+                image:
+                  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=900&q=80',
+                ctaLabel: `View ${cleanSingular} →`,
+              },
+            },
+          ],
+        };
+
+        const nextCols = [...current.cmsCollections, newCol];
+        const activeId = current.activeProjectId;
+        if (activeId && current.projects[activeId]) {
+          const updatedProject: Project = {
+            ...current.projects[activeId]!,
+            cmsCollections: nextCols,
+            updatedAt: Date.now(),
+          };
+          const nextProjects = { ...current.projects, [activeId]: updatedProject };
+          set({
+            cmsCollections: nextCols,
+            activeCmsCollectionId: newCol.id,
+            projects: nextProjects,
+          });
+          persistProjectsAsync(nextProjects);
+        } else {
+          set({
+            cmsCollections: nextCols,
+            activeCmsCollectionId: newCol.id,
+          });
+        }
+        return newCol.id;
+      },
+
+      upsertCmsItem: (collectionId, itemInput) => {
+        const current = get();
+        const itemId =
+          itemInput.id ?? `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const now = Date.now();
+
+        const nextCols = current.cmsCollections.map((col) => {
+          if (col.id !== collectionId) return col;
+          const exists = col.items.some((i) => i.id === itemId);
+          const nextItems: CmsItem[] = exists
+            ? col.items.map((i) =>
+                i.id === itemId
+                  ? {
+                      ...i,
+                      status: itemInput.status,
+                      values: { ...i.values, ...itemInput.values },
+                      updatedAt: now,
+                    }
+                  : i
+              )
+            : [
+                {
+                  id: itemId,
+                  status: itemInput.status,
+                  values: itemInput.values,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+                ...col.items,
+              ];
+          return { ...col, items: nextItems };
+        });
+
+        const activeId = current.activeProjectId;
+        if (activeId && current.projects[activeId]) {
+          const updatedProject: Project = {
+            ...current.projects[activeId]!,
+            cmsCollections: nextCols,
+            updatedAt: now,
+          };
+          const nextProjects = { ...current.projects, [activeId]: updatedProject };
+          set({ cmsCollections: nextCols, projects: nextProjects });
+          persistProjectsAsync(nextProjects);
+        } else {
+          set({ cmsCollections: nextCols });
+        }
+        return itemId;
+      },
+
+      deleteCmsItem: (collectionId, itemId) => {
+        const current = get();
+        const nextCols = current.cmsCollections.map((col) =>
+          col.id === collectionId
+            ? { ...col, items: col.items.filter((i) => i.id !== itemId) }
+            : col
+        );
+
+        const activeId = current.activeProjectId;
+        if (activeId && current.projects[activeId]) {
+          const updatedProject: Project = {
+            ...current.projects[activeId]!,
+            cmsCollections: nextCols,
+            updatedAt: Date.now(),
+          };
+          const nextProjects = { ...current.projects, [activeId]: updatedProject };
+          set({ cmsCollections: nextCols, projects: nextProjects });
+          persistProjectsAsync(nextProjects);
+        } else {
+          set({ cmsCollections: nextCols });
+        }
+      },
+
+      insertCmsCollectionSection: (collectionId, columns = 3) => {
+        const current = get();
+        const col = current.cmsCollections.find((c) => c.id === collectionId);
+        if (!col) return null;
+
+        const built = buildCmsCollectionSection(col, {
+          columns,
+          accentColor: current.tokens.primaryColor,
+          surfaceColor: current.tokens.surfaceColor,
+          borderColor: current.tokens.borderColor,
+        });
+
+        return get().insertGeneratedSection(built);
+      },
+
+      insertGeneratedSection: ({ rootNode, descendants }) => {
+        const { doc, selectedNodeId } = get();
+        const nextNodes: Record<NodeId, TectaNode> = {
+          ...doc.nodes,
+          [rootNode.id]: rootNode,
+        };
+        for (const d of descendants) {
+          nextNodes[d.id] = d;
+        }
+
+        let insertIndex = doc.rootIds.length;
+        if (selectedNodeId) {
+          let cursor = doc.nodes[selectedNodeId];
+          while (cursor && cursor.parentId) {
+            cursor = doc.nodes[cursor.parentId];
+          }
+          if (cursor) {
+            const idx = doc.rootIds.indexOf(cursor.id);
+            if (idx !== -1) insertIndex = idx + 1;
+          }
+        }
+
+        const nextRootIds = [...doc.rootIds];
+        nextRootIds.splice(insertIndex, 0, rootNode.id);
+
+        commitDoc(
+          {
+            ...doc,
+            rootIds: nextRootIds,
+            nodes: nextNodes,
+          },
+          rootNode.id
+        );
+
+        return rootNode.id;
       },
 
       selectNode: (id) => set({ selectedNodeId: id }),

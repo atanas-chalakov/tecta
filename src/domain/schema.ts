@@ -4,6 +4,8 @@ export type Breakpoint = 'desktop' | 'tablet' | 'mobile';
 
 import type { DesignTokens, ElementPresets } from './presets';
 export * from './presets';
+import type { CmsCollection } from './cms';
+export * from './cms';
 
 export type StudioStep = 1 | 2 | 3;
 
@@ -16,6 +18,7 @@ export interface Project {
   tokens: DesignTokens;
   presets: ElementPresets;
   customComponents: SavedComponent[];
+  cmsCollections?: CmsCollection[];
   pages: Record<string, PageDocument>;
   activePageId: string;
   createdAt: number;

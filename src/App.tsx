@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { AiCopilotBar } from './components/AiCopilotBar';
 import { CanvasFrame } from './components/CanvasFrame';
+import { CmsManagerModal } from './components/CmsManagerModal';
 import { ExportModal } from './components/ExportModal';
 import { LeftSidebar } from './components/LeftSidebar';
 import { PresetInspector } from './components/PresetInspector';
@@ -11,6 +13,7 @@ import { useDocumentStore } from './store/documentStore';
 
 export function App() {
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isCmsOpen, setIsCmsOpen] = useState(false);
   const activeProjectId = useDocumentStore((s) => s.activeProjectId);
   const isPreviewMode = useDocumentStore((s) => s.isPreviewMode);
   const activeStep = useDocumentStore((s) => s.activeStep);
@@ -78,14 +81,19 @@ export function App() {
   // When a project is active, display the 3-step Studio editor
   return (
     <div className="h-screen w-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-hidden">
-      <TopBar onOpenExport={() => setIsExportOpen(true)} />
+      <TopBar
+        onOpenExport={() => setIsExportOpen(true)}
+        onOpenCms={() => setIsCmsOpen(true)}
+      />
 
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
         {!isPreviewMode && <LeftSidebar />}
         {activeStep === 1 ? <StyleguideCanvas /> : <CanvasFrame />}
         {!isPreviewMode && (activeStep === 1 ? <PresetInspector /> : <RightInspector />)}
+        {!isPreviewMode && <AiCopilotBar />}
       </div>
 
+      {isCmsOpen && <CmsManagerModal onClose={() => setIsCmsOpen(false)} />}
       {isExportOpen && <ExportModal onClose={() => setIsExportOpen(false)} />}
     </div>
   );

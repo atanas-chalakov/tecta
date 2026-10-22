@@ -8,9 +8,11 @@ import {
   Copy,
   MoveHorizontal,
   Sliders,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import type { Breakpoint, NodeId, StyleProps } from '../domain/schema';
+import { runBuiltinDesignAssistant } from '../services/aiDesignCopilot';
 import { cssomEngine } from '../services/cssomEngine';
 import { useDocumentStore } from '../store/documentStore';
 
@@ -237,6 +239,67 @@ export function RightInspector() {
 
       {/* Scrollable Inspector Sections */}
       <div className="flex-1 overflow-y-auto p-3 space-y-5">
+        {/* AI Style & Font Assistant (Scoped to Selected Element) */}
+        <section className="p-2.5 rounded-xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-indigo-200 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>AI Style &amp; Font Assist</span>
+            </span>
+            <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+              CSS · Fonts
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(
+              [
+                {
+                  label: 'Glow Border',
+                  prompt: 'Add a 1px glowing indigo border with 16px rounded radius',
+                },
+                {
+                  label: 'Glass Surface',
+                  prompt: 'Apply frosted glassmorphism background and border',
+                },
+                {
+                  label: 'Mesh Bg',
+                  prompt: 'Set a radial indigo mesh gradient background',
+                },
+                {
+                  label: 'Editorial Font',
+                  prompt: 'Suggest an editorial luxury serif font pairing',
+                },
+              ] as const
+            ).map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => {
+                  const res = runBuiltinDesignAssistant(
+                    preset.prompt,
+                    node,
+                    breakpoint
+                  );
+                  if (res.stylePatch) {
+                    setStyle(res.stylePatch);
+                  }
+                  if (res.fontPairing) {
+                    useDocumentStore
+                      .getState()
+                      .setGoogleFont('heading', res.fontPairing.heading);
+                    useDocumentStore
+                      .getState()
+                      .setGoogleFont('body', res.fontPairing.body);
+                  }
+                }}
+                className="px-2 py-1 rounded-md bg-zinc-900/90 hover:bg-indigo-600/30 text-zinc-300 hover:text-white border border-zinc-800 hover:border-indigo-500/40 text-[10px] font-medium text-left transition-colors cursor-pointer"
+              >
+                ✦ {preset.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
         {/* Content & Attributes */}
         {(isLeafText || node.tag === 'a' || node.tag === 'img') && (
           <section className="space-y-2.5 pb-4 border-b border-zinc-800/80">
